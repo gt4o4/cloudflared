@@ -1,89 +1,107 @@
-# Cloudflare Tunnel client
+# Cloudflared DLL/Shared Library Build
 
-Contains the command-line client for Cloudflare Tunnel, a tunneling daemon that proxies traffic from the Cloudflare network to your origins.
-This daemon sits between Cloudflare network and your origin (e.g. a webserver). Cloudflare attracts client requests and sends them to you
-via this daemon, without requiring you to poke holes on your firewall --- your origin can remain as closed as possible.
-Extensive documentation can be found in the [Cloudflare Tunnel section](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel) of the Cloudflare Docs.
-All usages related with proxying to your origins are available under `cloudflared tunnel help`.
+Build [cloudflared](https://github.com/cloudflare/cloudflared) as DLL/shared library instead of executable.
 
-You can also use `cloudflared` to access Tunnel origins (that are protected with `cloudflared tunnel`) for TCP traffic
-at Layer 4 (i.e., not HTTP/websocket), which is relevant for use cases such as SSH, RDP, etc.
-Such usages are available under `cloudflared access help`.
+## Quick Start
 
-You can instead use [WARP client](https://developers.cloudflare.com/warp-client/)
-to access private origins behind Tunnels for Layer 4 traffic without requiring `cloudflared access` commands on the client side.
-
-
-## Before you get started
-
-Before you use Cloudflare Tunnel, you'll need to complete a few steps in the Cloudflare dashboard: you need to add a
-website to your Cloudflare account. Note that today it is possible to use Tunnel without a website (e.g. for private
-routing), but for legacy reasons this requirement is still necessary:
-1. [Add a website to Cloudflare](https://developers.cloudflare.com/fundamentals/manage-domains/add-site/)
-2. [Change your domain nameservers to Cloudflare](https://developers.cloudflare.com/dns/zone-setups/full-setup/setup/)
-
-
-## Installing `cloudflared`
-
-Downloads are available as standalone binaries, a Docker image, and Debian, RPM, and Homebrew packages. You can also find releases [here](https://github.com/cloudflare/cloudflared/releases) on the `cloudflared` GitHub repository.
-
-* You can [install on macOS](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/#macos) via Homebrew or by downloading the [latest Darwin amd64 release](https://github.com/cloudflare/cloudflared/releases)
-* Binaries, Debian, and RPM packages for Linux [can be found here](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/#linux)
-* A Docker image of `cloudflared` is [available on DockerHub](https://hub.docker.com/r/cloudflare/cloudflared)
-* You can install on Windows machines with the [steps here](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/#windows)
-* To build from source, install the required version of go, mentioned in the [Development](#development) section below. Then you can run `make cloudflared`.
-
-User documentation for Cloudflare Tunnel can be found at https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/
-
-
-## Creating Tunnels and routing traffic
-
-Once installed, you can authenticate `cloudflared` into your Cloudflare account and begin creating Tunnels to serve traffic to your origins.
-
-* Create a Tunnel with [these instructions](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/)
-* Route traffic to that Tunnel:
-  * Via public [DNS records in Cloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/)
-  * Or via a public hostname guided by a [Cloudflare Load Balancer](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/public-load-balancers/)
-  * Or from [WARP client private traffic](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/)
-
-
-## TryCloudflare
-
-Want to test Cloudflare Tunnel before adding a website to Cloudflare? You can do so with TryCloudflare using the documentation [available here](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/).
-
-## Deprecated versions
-
-Cloudflare currently supports versions of cloudflared that are **within one year** of the most recent release. Breaking changes unrelated to feature availability may be introduced that will impact versions released more than one year ago. You can read more about upgrading cloudflared in our [developer documentation](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/update-cloudflared/).
-
-For example, as of January 2023 Cloudflare will support cloudflared version 2023.1.1 to cloudflared 2022.1.1.
-
-## Development
-
-### Requirements
-- [GNU Make](https://www.gnu.org/software/make/)
-- [capnp](https://capnproto.org/install.html)
-- [go >= 1.26](https://go.dev/doc/install)
-- Optional tools:
-  - [capnpc-go](https://pkg.go.dev/zombiezen.com/go/capnproto2/capnpc-go)
-  - [goimports](https://pkg.go.dev/golang.org/x/tools/cmd/goimports)
-  - [golangci-lint](https://github.com/golangci/golangci-lint)
-  - [gomocks](https://pkg.go.dev/go.uber.org/mock)
-
-### Build
-To build cloudflared locally run `make cloudflared`
-
-### Test
-To locally run the tests run `make test`
-
-### Linting
-To format the code and keep a good code quality use `make fmt` and `make lint`
-
-### Mocks
-After changes on interfaces you might need to regenerate the mocks, so run `make mocks`
-
-### Git Hooks
-To avoid CI errors, you can install pre-push hooks that run linting and tests before each push:
 ```bash
-make install-hooks
+# Clone this repo
+git clone <this-repo-url>
+
+# Clone cloudflared
+git clone https://github.com/cloudflare/cloudflared.git
+
+# Apply modifications
+python updates/replace.py ./cloudflared
+
+# Build (Windows example)
+cd cloudflared
+go build -buildmode=c-shared -o cloudflared.dll ./cmd/cloudflared
 ```
-This will configure git to use the hooks in `.githooks/` that run `make fmt-check lint test` before each push.
+
+## Exported Functions
+
+| Function             | Signature                            | Description                                  |
+| -------------------- | ------------------------------------ | -------------------------------------------- |
+| `CloudflaredInit`    | `int CloudflaredInit()`              | Initialize cloudflared, returns 0 on success |
+| `CloudflaredRun`     | `int CloudflaredRun(char* args)`     | Run with args (async), returns 0 on success  |
+| `CloudflaredRunSync` | `int CloudflaredRunSync(char* args)` | Run with args (blocking)                     |
+| `CloudflaredStop`    | `int CloudflaredStop()`              | Stop and cleanup                             |
+| `CloudflaredVersion` | `char* CloudflaredVersion()`         | Get version string                           |
+
+## Usage Example
+
+### C/C++
+
+```c
+#include "cloudflared.h"
+
+int main() {
+    CloudflaredInit();
+    CloudflaredRunSync("cloudflared tunnel run my-tunnel");
+    CloudflaredStop();
+    return 0;
+}
+```
+
+### Python (ctypes)
+
+```python
+import ctypes
+
+lib = ctypes.CDLL("./cloudflared.dll")  # or .so/.dylib
+lib.CloudflaredInit()
+lib.CloudflaredRunSync(b"cloudflared tunnel run my-tunnel")
+lib.CloudflaredStop()
+```
+
+## Build Platforms
+
+| Platform      | File     | GOOS/GOARCH   |
+| ------------- | -------- | ------------- |
+| Windows x64   | `.dll`   | windows/amd64 |
+| Windows x86   | `.dll`   | windows/386   |
+| Linux x64     | `.so`    | linux/amd64   |
+| Linux x86     | `.so`    | linux/386     |
+| Linux ARM64   | `.so`    | linux/arm64   |
+| Linux ARM     | `.so`    | linux/arm     |
+| macOS Intel   | `.dylib` | darwin/amd64  |
+| macOS ARM64   | `.dylib` | darwin/arm64  |
+| Android ARM64 | `.so`    | android/arm64 |
+| Android ARM   | `.so`    | android/arm   |
+| Android x64   | `.so`    | android/amd64 |
+| Android x86   | `.so`    | android/386   |
+| FreeBSD x64   | `.so`    | freebsd/amd64 |
+| OpenBSD x64   | `.so`    | openbsd/amd64 |
+
+## Files Modified
+
+| File                 | Change                                 |
+| -------------------- | -------------------------------------- |
+| `main.go`            | Added `runAppWithArgs()` for DLL entry |
+| `dll_exports.go`     | **NEW** - C-exported functions         |
+| `generic_service.go` | `runApp()` accepts `args` parameter    |
+| `linux_service.go`   | `runApp()` accepts `args` parameter    |
+| `macos_service.go`   | `runApp()` accepts `args` parameter    |
+| `windows_service.go` | `runApp()` accepts `args` parameter    |
+
+## Automated Builds
+
+GitHub Actions builds run twice daily (`0 6,18 * * *`). Binaries are committed to `binaries/` with SHA256/MD5 checksums.
+
+## Build Commands
+
+```bash
+# Windows DLL
+GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o cloudflared.dll ./cmd/cloudflared
+
+# Linux SO
+GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o cloudflared.so ./cmd/cloudflared
+
+# macOS DYLIB
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -buildmode=c-shared -o cloudflared.dylib ./cmd/cloudflared
+```
+
+## License
+
+Original cloudflared is licensed under [Apache 2.0](https://github.com/cloudflare/cloudflared/blob/master/LICENSE).
