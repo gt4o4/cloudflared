@@ -21,3 +21,4 @@ component-tests/.venv
 /artifacts
 /.cloudflare
 *.pyc
+/.backup
