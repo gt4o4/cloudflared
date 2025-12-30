@@ -22,3 +22,8 @@ component-tests/.venv
 /.cloudflare
 *.pyc
 /.backup
+/.cache
+/python/binaries
+cloudflared_temp.log
+python_example.py
+t.py
