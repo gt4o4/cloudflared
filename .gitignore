@@ -27,3 +27,8 @@ component-tests/.venv
 cloudflared_temp.log
 python_example.py
 t.py
+cloudflared-windows-amd64.dll
+cloudflared-windows-amd64.h
+/python
+/python/utils
+
