@@ -121,8 +121,8 @@
         {
           "filename": "cloudflared-linux-386.so",
           "url": "https://raw.githubusercontent.com/QudsLab/Cloudflared/main/binaries/linux-386/cloudflared-linux-386.so",
-          "sha256": "ff8ebc3369774c52c0eff10823165613c957a83af10eb9bf3160d1d2f1bab23b",
-          "md5": "4878261d3769b323d4545f3931713a31",
+          "sha256": "8311ae97142223dbea42b30333570771534ae2f160196fbf7b865bd2a8e2756e",
+          "md5": "82cc018e4b44c560b0a1aaa585e31e6a",
           "size": 38727756
         }
       ]
