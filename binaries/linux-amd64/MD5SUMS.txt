@@ -1,4 +1,4 @@
 d41d8cd98f00b204e9800998ecf8427e  MD5SUMS.txt
-7cbb4da246a862b8b633f5500ff3fe40  SHA256SUMS.txt
+871727a9d6fe3486ef6dad93b45c9311  SHA256SUMS.txt
 5966d04dda2b9f88c6ca4485e638d9cc  cloudflared-linux-amd64.h
 1640fe436886ea131e0b6ed110264140  cloudflared-linux-amd64.so
