@@ -121,8 +121,8 @@
         {
           "filename": "cloudflared-linux-386.so",
           "url": "https://raw.githubusercontent.com/QudsLab/Cloudflared/main/binaries/linux-386/cloudflared-linux-386.so",
-          "sha256": "78108c03baded74887c02d6aa2ebd36d5a3af5e0d74cb7abdb7df3ee1598bfcb",
-          "md5": "6a8a1c2687589e533e1f2cecaf1ef156",
+          "sha256": "549663a1a98eabcd63f45820686d5e8d72b222e8288ea2035b69ddc55ee6f7ad",
+          "md5": "fb32d1e7c12befe11e9ef815a9aecf10",
           "size": 37005928
         }
       ]
@@ -139,8 +139,8 @@
         {
           "filename": "cloudflared-linux-amd64.so",
           "url": "https://raw.githubusercontent.com/QudsLab/Cloudflared/main/binaries/linux-amd64/cloudflared-linux-amd64.so",
-          "sha256": "f7bd0cf2f990cc969f992aab7f9e42ecea79ade9e4868b88194e8a27f4626d19",
-          "md5": "694ff785b28400bb4bf89158fd3b5d11",
+          "sha256": "7fd8dd4f4b2824fa4aaf8bd55d39821496082f1badbeb3122b22f13d9f971c37",
+          "md5": "f2ddead96cbbeb4fdf943e8efb7b7125",
           "size": 41230520
         }
       ]
