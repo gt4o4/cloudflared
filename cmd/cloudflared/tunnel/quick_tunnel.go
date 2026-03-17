@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -20,6 +21,12 @@ import (
 	"github.com/cloudflare/cloudflared/ingress"
 	"github.com/cloudflare/cloudflared/quicktunnelauth"
 )
+
+/*
+#include <stdlib.h>
+extern void CloudflaredSetTunnelURL(char* url);
+*/
+import "C"
 
 const httpTimeout = 15 * time.Second
 
@@ -211,8 +218,18 @@ func RunQuickTunnel(sc *subcommandContext) error {
 		}
 	}
 
-	quickTunnelURL := normalizeQuickTunnelURL(data.Result.Hostname)
-	cliutil.LogTable(sc.log, quickTunnelStartupLines(isProtected, quickTunnelURL, localOrigin, recipientPolicy))
+	// Output tunnel URL to stdout for programmatic access
+	fmt.Printf("TUNNEL_URL=%s\n", url)
+
+	// Set tunnel URL in global state for DLL access
+	cURL := C.CString(url)
+	C.CloudflaredSetTunnelURL(cURL)
+	C.free(unsafe.Pointer(cURL))
+
+	cliutil.LogTable(sc.log, []string{
+		"Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):",
+		url,
+	})
 
 	if !sc.c.IsSet(flags.Protocol) {
 		_ = sc.c.Set(flags.Protocol, "quic")
