@@ -48,16 +48,12 @@ var (
 	}
 )
 
-func main() {
+func initApp(graceShutdownC chan struct{}) *cli.App {
 	// FIXME: TUN-8148: Disable QUIC_GO ECN due to bugs in proper detection if supported
 	os.Setenv("QUIC_GO_DISABLE_ECN", "1")
 	metrics.RegisterBuildInfo(BuildType, BuildTime, Version)
 	_, _ = maxprocs.Set()
 	bInfo := cliutil.GetBuildInfo(BuildType, Version)
-
-	// Graceful shutdown channel used by the app. When closed, app must terminate gracefully.
-	// Windows service manager closes this channel when it receives stop command.
-	graceShutdownC := make(chan struct{})
 
 	cli.VersionFlag = &cli.BoolFlag{
 		Name:    "version",
@@ -86,14 +82,20 @@ func main() {
 	app.Action = action(graceShutdownC)
 	app.Commands = commands(cli.ShowVersion)
 
-	tunnel.Init(bInfo, graceShutdownC) // we need this to support the tunnel sub command...
+	tunnel.Init(bInfo, graceShutdownC)
 	access.Init(graceShutdownC, Version)
 	updater.Init(bInfo)
 	tracing.Init(Version)
 	token.Init(Version)
 	tail.Init(bInfo)
 	management.Init(bInfo)
-	runApp(app, graceShutdownC)
+
+	return app
+}
+
+func runAppWithArgs(graceShutdownC chan struct{}, args []string) {
+	app := initApp(graceShutdownC)
+	runApp(app, graceShutdownC, args)
 }
 
 func commands(version func(c *cli.Context)) []*cli.Command {
