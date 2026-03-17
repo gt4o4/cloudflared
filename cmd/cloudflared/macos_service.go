@@ -22,7 +22,7 @@ const (
 // OS-specific function for token file creation
 var createTokenFile = createTokenFileUnix
 
-func runApp(app *cli.App, _ chan struct{}) {
+func runApp(app *cli.App, _ chan struct{}, args []string) {
 	app.Commands = append(app.Commands, &cli.Command{
 		Name:  "service",
 		Usage: "Manages the cloudflared launch agent",
@@ -50,7 +50,7 @@ causing it to look for credentials in a configuration file upon startup.`,
 			},
 		},
 	})
-	_ = app.Run(os.Args)
+	_ = app.Run(args)
 }
 
 func newLaunchdTemplate(installPath, stdoutPath, stderrPath string) *ServiceTemplate {

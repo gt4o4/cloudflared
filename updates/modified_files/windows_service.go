@@ -2,6 +2,9 @@
 
 package main
 
+// Copypasta from the example files:
+// https://github.com/golang/sys/blob/master/windows/svc/example
+
 import (
 	"fmt"
 	"os"
@@ -23,12 +26,17 @@ import (
 const (
 	windowsServiceName        = "Cloudflared"
 	windowsServiceDescription = "Cloudflared agent"
-	windowsServiceUrl         = "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/configure-tunnels/local-management/as-a-service/windows/"
+	windowsServiceUrl         = "https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/configure-tunnels/local-management/as-a-service/windows/"
 
 	recoverActionDelay      = time.Second * 20
 	failureCountResetPeriod = time.Hour * 24
 
-	serviceConfigFailureActionsFlag    = 4
+	// not defined in golang.org/x/sys/windows package
+	// https://msdn.microsoft.com/en-us/library/windows/desktop/ms681988(v=vs.85).aspx
+	serviceConfigFailureActionsFlag = 4
+
+	// ERROR_FAILED_SERVICE_CONTROLLER_CONNECT
+	// https://docs.microsoft.com/en-us/windows/desktop/debug/system-error-codes--1000-1299-
 	serviceControllerConnectionFailure = 1063
 
 	LogFieldWindowsServiceName = "windowsServiceName"
@@ -52,6 +60,16 @@ func runApp(app *cli.App, graceShutdownC chan struct{}, args []string) {
 		},
 	})
 
+	// `IsAnInteractiveSession()` isn't exactly equivalent to "should the
+	// process run as a normal EXE?" There are legitimate non-service cases,
+	// like running cloudflared in a GCP startup script, for which
+	// `IsAnInteractiveSession()` returns false. For more context, see:
+	//     https://github.com/judwhite/go-svc/issues/6
+	// It seems that the "correct way" to check "is this a normal EXE?" is:
+	//     1. attempt to connect to the Service Control Manager
+	//     2. get ERROR_FAILED_SERVICE_CONTROLLER_CONNECT
+	// This involves actually trying to start the service.
+
 	log := logger.Create(nil)
 
 	isIntSess, err := svc.IsAnInteractiveSession()
@@ -63,9 +81,14 @@ func runApp(app *cli.App, graceShutdownC chan struct{}, args []string) {
 		return
 	}
 
+	// Run executes service name by calling windowsService which is a Handler
+	// interface that implements Execute method.
+	// It will set service status to stop after Execute returns
 	err = svc.Run(windowsServiceName, &windowsService{app: app, graceShutdownC: graceShutdownC, args: args})
 	if err != nil {
 		if errno, ok := err.(syscall.Errno); ok && int(errno) == serviceControllerConnectionFailure {
+			// Hack: assume this is a false negative from the IsAnInteractiveSession() check above.
+			// Run the app in "interactive" mode anyway.
 			app.Run(args)
 			return
 		}
@@ -79,6 +102,8 @@ type windowsService struct {
 	args           []string
 }
 
+// Execute is called by the service manager when service starts, the state
+// of the service will be set to Stopped when this function returns.
 func (s *windowsService) Execute(serviceArgs []string, r <-chan svc.ChangeRequest, statusChan chan<- svc.Status) (ssec bool, errno uint32) {
 	log := logger.Create(nil)
 	elog, err := eventlog.Open(windowsServiceName)
@@ -93,10 +118,15 @@ func (s *windowsService) Execute(serviceArgs []string, r <-chan svc.ChangeReques
 		elog.Info(1, fmt.Sprintf("%s service stopped", windowsServiceName))
 	}()
 
+	// the arguments passed here are only meaningful if they were manually
+	// specified by the user, e.g. using the Services console or `sc start`.
+	// https://docs.microsoft.com/en-us/windows/desktop/services/service-entry-point
+	// https://stackoverflow.com/a/6235139
 	var args []string
 	if len(serviceArgs) > 1 {
 		args = serviceArgs
 	} else {
+		// fall back to the arguments from ImagePath (or, as sc calls it, binPath)
 		args = s.args
 	}
 	elog.Info(1, fmt.Sprintf("%s service arguments: %v", windowsServiceName, args))
@@ -116,12 +146,14 @@ func (s *windowsService) Execute(serviceArgs []string, r <-chan svc.ChangeReques
 				statusChan <- c.CurrentStatus
 			case svc.Stop, svc.Shutdown:
 				if s.graceShutdownC != nil {
+					// start graceful shutdown
 					elog.Info(1, "cloudflared starting graceful shutdown")
 					close(s.graceShutdownC)
 					s.graceShutdownC = nil
 					statusChan <- svc.Status{State: svc.StopPending}
 					continue
 				}
+				// repeated attempts at graceful shutdown forces immediate stop
 				elog.Info(1, "cloudflared terminating immediately")
 				statusChan <- svc.Status{State: svc.StopPending}
 				return false, 0
@@ -230,8 +262,10 @@ func uninstallWindowsService(c *cli.Context) error {
 	return nil
 }
 
+// defined in https://msdn.microsoft.com/en-us/library/windows/desktop/ms685126(v=vs.85).aspx
 type scAction int
 
+// https://msdn.microsoft.com/en-us/library/windows/desktop/ms685126(v=vs.85).aspx
 const (
 	scActionNone scAction = iota
 	scActionRestart
@@ -239,23 +273,34 @@ const (
 	scActionRunCommand
 )
 
+// defined in https://msdn.microsoft.com/en-us/library/windows/desktop/ms685939(v=vs.85).aspx
 type serviceFailureActions struct {
+	// time to wait to reset the failure count to zero if there are no failures in seconds
 	resetPeriod uint32
 	rebootMsg   *uint16
 	command     *uint16
+	// If failure count is greater than actionCount, the service controller repeats
+	// the last action in actions
 	actionCount uint32
 	actions     uintptr
 }
 
+// https://msdn.microsoft.com/en-us/library/windows/desktop/ms685937(v=vs.85).aspx
+// Not supported in Windows Server 2003 and Windows XP
 type serviceFailureActionsFlag struct {
+	// enableActionsForStopsWithErr is of type BOOL, which is declared as
+	// typedef int BOOL in C
 	enableActionsForStopsWithErr int
 }
 
 type recoveryAction struct {
 	recoveryType uint32
-	delay        uint32
+	// The time to wait before performing the specified action, in milliseconds
+	delay uint32
 }
 
+// until https://github.com/golang/go/issues/23239 is release, we will need to
+// configure through ChangeServiceConfig2
 func configRecoveryOption(handle windows.Handle) error {
 	actions := []recoveryAction{
 		{recoveryType: uint32(scActionRestart), delay: uint32(recoverActionDelay / time.Millisecond)},
