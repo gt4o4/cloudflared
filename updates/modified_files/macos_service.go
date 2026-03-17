@@ -77,6 +77,7 @@ func isRootUser() bool {
 }
 
 func installPath() (string, error) {
+	// User is root, use /Library/LaunchDaemons instead of home directory
 	if isRootUser() {
 		return fmt.Sprintf("/Library/LaunchDaemons/%s.plist", launchdIdentifier), nil
 	}
@@ -209,6 +210,10 @@ func uninstallLaunchd(c *cli.Context) error {
 }
 
 func userHomeDir() (string, error) {
+	// This returns the home dir of the executing user using OS-specific method
+	// for discovering the home dir. It's not recommended to call this function
+	// when the user has root permission as $HOME depends on what options the user
+	// use with sudo.
 	homeDir, err := homedir.Dir()
 	if err != nil {
 		return "", errors.Wrap(err, "Cannot determine home directory for the user")
