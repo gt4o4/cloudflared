@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -16,11 +15,9 @@ import (
 	"github.com/cloudflare/cloudflared/connection"
 )
 
-/*
-#include <stdlib.h>
-extern void CloudflaredSetTunnelURL(char* url);
-*/
-import "C"
+// OnURLReady is called with the public tunnel URL once it is known.
+// Set by the embedding application before starting a tunnel.
+var OnURLReady func(string)
 
 const httpTimeout = 15 * time.Second
 
@@ -83,13 +80,9 @@ func RunQuickTunnel(sc *subcommandContext) error {
 		url = "https://" + url
 	}
 
-	// Output tunnel URL to stdout for programmatic access
-	fmt.Printf("TUNNEL_URL=%s\n", url)
-	
-	// Set tunnel URL in global state for DLL access
-	cURL := C.CString(url)
-	C.CloudflaredSetTunnelURL(cURL)
-	C.free(unsafe.Pointer(cURL))
+	if OnURLReady != nil {
+		OnURLReady(url)
+	}
 
 	for _, line := range AsciiBox([]string{
 		"Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):",
