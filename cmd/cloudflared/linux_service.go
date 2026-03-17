@@ -18,7 +18,7 @@ import (
 	"github.com/cloudflare/cloudflared/logger"
 )
 
-func runApp(app *cli.App, _ chan struct{}) {
+func runApp(app *cli.App, _ chan struct{}, args []string) {
 	app.Commands = append(app.Commands, &cli.Command{
 		Name:  "service",
 		Usage: "Manages the cloudflared system service",
@@ -51,7 +51,7 @@ out if no configuration file with credentials was found).`,
 			},
 		},
 	})
-	_ = app.Run(os.Args)
+	_ = app.Run(args)
 }
 
 // The directory and files that are used by the service.

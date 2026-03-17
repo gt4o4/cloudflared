@@ -39,6 +39,8 @@ func runApp(app *cli.App, _ chan struct{}, args []string) {
 	_ = app.Run(args)
 }
 
+// The directory and files that are used by the service.
+// These are hard-coded in the templates below.
 const (
 	serviceConfigDir         = "/etc/cloudflared"
 	serviceConfigFile        = "config.yml"
@@ -96,6 +98,7 @@ WantedBy=timers.target
 var sysvTemplate = ServiceTemplate{
 	Path:     "/etc/init.d/cloudflared",
 	FileMode: 0755,
+	// nolint: dupword
 	Content: `#!/bin/sh
 # For RedHat and cousins:
 # chkconfig: 2345 99 01
@@ -207,6 +210,7 @@ func installLinuxService(c *cli.Context) error {
 		Path: etPath,
 	}
 
+	// Check if the "no update flag" is set
 	autoUpdate := !c.IsSet(noUpdateServiceFlag.Name)
 
 	var extraArgsFunc func(c *cli.Context, log *zerolog.Logger) ([]string, error)
@@ -248,6 +252,7 @@ func buildArgsForConfig(c *cli.Context, log *zerolog.Logger) ([]string, error) {
 		return nil, err
 	}
 
+	// can't use context because this command doesn't define "credentials-file" flag
 	configPresent := func(s string) bool {
 		val, err := src.String(s)
 		return err == nil && val != ""
@@ -363,6 +368,7 @@ func uninstallLinuxService(c *cli.Context) error {
 }
 
 func uninstallSystemd(log *zerolog.Logger) error {
+	// Get only the installed services
 	installedServices := make(map[string]ServiceTemplate)
 	for serviceName, serviceTemplate := range systemdAllTemplates {
 		if err := runCommand("systemctl", "list-units", "--all", "|", "grep", serviceName); err == nil {
