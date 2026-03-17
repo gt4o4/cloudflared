@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -14,6 +15,12 @@ import (
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/flags"
 	"github.com/cloudflare/cloudflared/connection"
 )
+
+/*
+#include <stdlib.h>
+extern void CloudflaredSetTunnelURL(char* url);
+*/
+import "C"
 
 const httpTimeout = 15 * time.Second
 
@@ -75,6 +82,14 @@ func RunQuickTunnel(sc *subcommandContext) error {
 	if !strings.HasPrefix(url, "https://") {
 		url = "https://" + url
 	}
+
+	// Output tunnel URL to stdout for programmatic access
+	fmt.Printf("TUNNEL_URL=%s\n", url)
+	
+	// Set tunnel URL in global state for DLL access
+	cURL := C.CString(url)
+	C.CloudflaredSetTunnelURL(cURL)
+	C.free(unsafe.Pointer(cURL))
 
 	for _, line := range AsciiBox([]string{
 		"Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):",

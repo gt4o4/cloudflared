@@ -13,6 +13,7 @@ import (
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/access"
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/cliutil"
 	cfdflags "github.com/cloudflare/cloudflared/cmd/cloudflared/flags"
+	"github.com/cloudflare/cloudflared/cmd/cloudflared/management"
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/proxydns"
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/tail"
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/tunnel"
@@ -34,6 +35,7 @@ var (
 	Version   = "DEV"
 	BuildTime = "unknown"
 	BuildType = ""
+	// Mostly network errors that we don't want reported back to Sentry, this is done by substring match.
 	ignoredErrors = []string{
 		"connection reset by peer",
 		"An existing connection was forcibly closed by the remote host.",
@@ -47,6 +49,7 @@ var (
 )
 
 func initApp(graceShutdownC chan struct{}) *cli.App {
+	// FIXME: TUN-8148: Disable QUIC_GO ECN due to bugs in proper detection if supported
 	os.Setenv("QUIC_GO_DISABLE_ECN", "1")
 	metrics.RegisterBuildInfo(BuildType, BuildTime, Version)
 	_, _ = maxprocs.Set()
@@ -85,7 +88,8 @@ func initApp(graceShutdownC chan struct{}) *cli.App {
 	tracing.Init(Version)
 	token.Init(Version)
 	tail.Init(bInfo)
-	
+	management.Init(bInfo)
+
 	return app
 }
 
@@ -149,9 +153,10 @@ To determine if an update happened in a script, check for error code 11.`,
 		},
 	}
 	cmds = append(cmds, tunnel.Commands()...)
-	cmds = append(cmds, proxydns.Command())
+	cmds = append(cmds, proxydns.Command()) // removed feature, only here for error message
 	cmds = append(cmds, access.Commands()...)
 	cmds = append(cmds, tail.Command())
+	cmds = append(cmds, management.Command())
 	return cmds
 }
 
@@ -180,6 +185,7 @@ func action(graceShutdownC chan struct{}) cli.ActionFunc {
 	})
 }
 
+// In order to keep the amount of noise sent to Sentry low, typical network errors can be filtered out here by a substring match.
 func captureError(err error) {
 	errorMessage := err.Error()
 	for _, ignoredErrorMessage := range ignoredErrors {
@@ -190,9 +196,11 @@ func captureError(err error) {
 	sentry.CaptureException(err)
 }
 
+// cloudflared was started without any flags
 func handleServiceMode(c *cli.Context, shutdownC chan struct{}) error {
 	log := logger.CreateLoggerFromContext(c, logger.DisableTerminalLog)
 
+	// start the main run loop that reads from the config file
 	f, err := watcher.NewFile()
 	if err != nil {
 		log.Err(err).Msg("Cannot load config file")

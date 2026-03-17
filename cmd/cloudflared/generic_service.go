@@ -4,14 +4,13 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	cli "github.com/urfave/cli/v2"
 
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/cliutil"
 )
 
-func runApp(app *cli.App, graceShutdownC chan struct{}) {
+func runApp(app *cli.App, graceShutdownC chan struct{}, args []string) {
 	app.Commands = append(app.Commands, &cli.Command{
 		Name:  "service",
 		Usage: "Manages the cloudflared system service (not supported on this operating system)",
@@ -28,7 +27,7 @@ func runApp(app *cli.App, graceShutdownC chan struct{}) {
 			},
 		},
 	})
-	app.Run(os.Args)
+	app.Run(args)
 }
 
 func installGenericService(c *cli.Context) error {
