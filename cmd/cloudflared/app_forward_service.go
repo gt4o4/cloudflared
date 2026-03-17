@@ -1,4 +1,4 @@
-package main
+package cloudflared
 
 import (
 	"github.com/rs/zerolog"

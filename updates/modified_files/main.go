@@ -1,9 +1,11 @@
-package main
+package cloudflared
 
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -48,6 +50,14 @@ var (
 	}
 )
 
+// API state for embedded library usage.
+var (
+	apiMu       sync.Mutex
+	apiShutdown chan struct{}
+	apiURL      string
+	apiReady    bool
+)
+
 func initApp(graceShutdownC chan struct{}) *cli.App {
 	// FIXME: TUN-8148: Disable QUIC_GO ECN due to bugs in proper detection if supported
 	os.Setenv("QUIC_GO_DISABLE_ECN", "1")
@@ -82,7 +92,7 @@ func initApp(graceShutdownC chan struct{}) *cli.App {
 	app.Action = action(graceShutdownC)
 	app.Commands = commands(cli.ShowVersion)
 
-	tunnel.Init(bInfo, graceShutdownC)
+	tunnel.Init(bInfo, graceShutdownC) // we need this to support the tunnel sub command...
 	access.Init(graceShutdownC, Version)
 	updater.Init(bInfo)
 	tracing.Init(Version)
@@ -228,4 +238,73 @@ func handleServiceMode(c *cli.Context, shutdownC chan struct{}) error {
 		return err
 	}
 	return nil
+}
+
+// --- Embedded library API ---
+
+// Init resets state and creates a fresh shutdown channel.
+func Init() {
+	apiMu.Lock()
+	defer apiMu.Unlock()
+	apiURL = ""
+	apiReady = false
+	apiShutdown = make(chan struct{})
+}
+
+// Stop closes the shutdown channel, signalling cloudflared to exit.
+func Stop() {
+	apiMu.Lock()
+	defer apiMu.Unlock()
+	if apiShutdown != nil {
+		close(apiShutdown)
+		apiShutdown = nil
+	}
+}
+
+// SetURL records the public tunnel URL once it is known.
+func SetURL(url string) {
+	apiMu.Lock()
+	defer apiMu.Unlock()
+	apiURL = url
+	apiReady = true
+}
+
+// GetURL returns the public tunnel URL (empty until the tunnel is ready).
+func GetURL() string {
+	apiMu.Lock()
+	defer apiMu.Unlock()
+	return apiURL
+}
+
+// IsReady reports whether the tunnel is up and the public URL is known.
+func IsReady() bool {
+	apiMu.Lock()
+	defer apiMu.Unlock()
+	return apiReady
+}
+
+// Run executes cloudflared with the given CLI arguments.
+// It sets up the OnURLReady callback and blocks until the tunnel exits.
+func Run(args []string) {
+	tunnel.OnURLReady = func(url string) {
+		SetURL(url)
+	}
+	runAppWithArgs(apiShutdown, args)
+}
+
+// StartQuickTunnel launches a trycloudflare.com quick tunnel for the given local port.
+func StartQuickTunnel(port int) {
+	go Run([]string{
+		"cloudflared", "tunnel",
+		"--url", "http://localhost:" + strconv.Itoa(port),
+		"--protocol", "http2",
+		"--loglevel", "fatal",
+	})
+}
+
+// RunNamed launches a named tunnel using the provided Cloudflare tunnel token.
+func RunNamed(token string) {
+	go Run([]string{
+		"cloudflared", "tunnel", "run", "--token", token,
+	})
 }

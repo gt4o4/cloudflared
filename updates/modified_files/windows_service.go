@@ -1,6 +1,9 @@
 //go:build windows
 
-package main
+package cloudflared
+
+// Copypasta from the example files:
+// https://github.com/golang/sys/blob/master/windows/svc/example
 
 // Copypasta from the example files:
 // https://github.com/golang/sys/blob/master/windows/svc/example
