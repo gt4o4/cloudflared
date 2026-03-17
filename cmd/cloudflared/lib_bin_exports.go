@@ -1,16 +1,18 @@
 //go:build cgo
 
-package main
+package cloudflared
 
 /*
 #include <stdlib.h>
 */
 import "C"
 import (
+	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
-    "strconv"
+
+	"github.com/cloudflare/cloudflared/cmd/cloudflared/tunnel"
 )
 
 var (
@@ -22,6 +24,15 @@ var (
 	globalTunnelReady bool
 	globalSilentMode  bool
 )
+
+func wireOnURLReady() {
+	tunnel.OnURLReady = func(url string) {
+		globalMu.Lock()
+		defer globalMu.Unlock()
+		globalTunnelURL = url
+		globalTunnelReady = true
+	}
+}
 
 //export CloudflaredSetSilentMode
 func CloudflaredSetSilentMode(silent C.int) {
@@ -55,6 +66,8 @@ func CloudflaredRun(cArgs *C.char) C.int {
 	shutdownC := globalShutdownC
 	globalMu.Unlock()
 
+	wireOnURLReady()
+
 	args := strings.Fields(C.GoString(cArgs))
 	if len(args) == 0 {
 		args = []string{"cloudflared"}
@@ -76,6 +89,8 @@ func CloudflaredRunSync(cArgs *C.char) C.int {
 	}
 	shutdownC := globalShutdownC
 	globalMu.Unlock()
+
+	wireOnURLReady()
 
 	args := strings.Fields(C.GoString(cArgs))
 	if len(args) == 0 {
@@ -124,7 +139,7 @@ func CloudflaredVersion() *C.char {
 func CloudflaredGetTunnelURL() *C.char {
 	globalMu.Lock()
 	defer globalMu.Unlock()
-	
+
 	if globalTunnelURL == "" {
 		return nil
 	}
@@ -135,7 +150,7 @@ func CloudflaredGetTunnelURL() *C.char {
 func CloudflaredGetTunnelStatus() C.int {
 	globalMu.Lock()
 	defer globalMu.Unlock()
-	
+
 	// 0 = not started, 1 = starting, 2 = ready
 	if !globalInitialized {
 		return 0
@@ -150,29 +165,29 @@ func CloudflaredGetTunnelStatus() C.int {
 func CloudflaredSetTunnelURL(cURL *C.char) {
 	globalMu.Lock()
 	defer globalMu.Unlock()
-	
+
 	globalTunnelURL = C.GoString(cURL)
 	globalTunnelReady = true
 }
 
-func main() {}
-
 //export CloudflaredStartQuickTunnel
 func CloudflaredStartQuickTunnel(port C.int) C.int {
-       globalMu.Lock()
-       if !globalInitialized {
-	       globalMu.Unlock()
-	       return -1
-       }
-       shutdownC := globalShutdownC
-       globalMu.Unlock()
+	globalMu.Lock()
+	if !globalInitialized {
+		globalMu.Unlock()
+		return -1
+	}
+	shutdownC := globalShutdownC
+	globalMu.Unlock()
 
-       args := []string{"cloudflared", "tunnel", "--url",
-	       "http://localhost:" +  strconv.Itoa(int(port)),
-	       "--protocol", "http2", "--loglevel", "fatal"}
+	wireOnURLReady()
 
-       go func() {
-	       runAppWithArgs(shutdownC, args)
-       }()
-       return 0
+	args := []string{"cloudflared", "tunnel", "--url",
+		"http://localhost:" + strconv.Itoa(int(port)),
+		"--protocol", "http2", "--loglevel", "fatal"}
+
+	go func() {
+		runAppWithArgs(shutdownC, args)
+	}()
+	return 0
 }
