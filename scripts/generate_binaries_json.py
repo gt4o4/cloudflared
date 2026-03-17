@@ -14,9 +14,9 @@ import hashlib
 from pathlib import Path
 
 # Repository information
-REPO_OWNER = "QudsLab"
-REPO_NAME = "Cloudflared"
-BRANCH = "main"  # Change to "master" if that's your default branch
+REPO_OWNER = "gt4o4"
+REPO_NAME = "cloudflared"
+BRANCH = "cflib"
 BASE_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/binaries"
 
 def calculate_file_hash(filepath, algorithm='sha256'):

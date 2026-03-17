@@ -42,7 +42,7 @@ const (
 	LogFieldWindowsServiceName = "windowsServiceName"
 )
 
-func runApp(app *cli.App, graceShutdownC chan struct{}) {
+func runApp(app *cli.App, graceShutdownC chan struct{}, args []string) {
 	app.Commands = append(app.Commands, &cli.Command{
 		Name:  "service",
 		Usage: "Manages the cloudflared Windows service",
@@ -77,19 +77,19 @@ func runApp(app *cli.App, graceShutdownC chan struct{}) {
 		log.Fatal().Err(err).Msg("failed to determine if we are running in an interactive session")
 	}
 	if isIntSess {
-		app.Run(os.Args)
+		app.Run(args)
 		return
 	}
 
 	// Run executes service name by calling windowsService which is a Handler
 	// interface that implements Execute method.
 	// It will set service status to stop after Execute returns
-	err = svc.Run(windowsServiceName, &windowsService{app: app, graceShutdownC: graceShutdownC})
+	err = svc.Run(windowsServiceName, &windowsService{app: app, graceShutdownC: graceShutdownC, args: args})
 	if err != nil {
 		if errno, ok := err.(syscall.Errno); ok && int(errno) == serviceControllerConnectionFailure {
 			// Hack: assume this is a false negative from the IsAnInteractiveSession() check above.
 			// Run the app in "interactive" mode anyway.
-			app.Run(os.Args)
+			app.Run(args)
 			return
 		}
 		log.Fatal().Err(err).Msgf("%s service failed", windowsServiceName)
@@ -99,6 +99,7 @@ func runApp(app *cli.App, graceShutdownC chan struct{}) {
 type windowsService struct {
 	app            *cli.App
 	graceShutdownC chan struct{}
+	args           []string
 }
 
 // Execute is called by the service manager when service starts, the state
@@ -126,7 +127,7 @@ func (s *windowsService) Execute(serviceArgs []string, r <-chan svc.ChangeReques
 		args = serviceArgs
 	} else {
 		// fall back to the arguments from ImagePath (or, as sc calls it, binPath)
-		args = os.Args
+		args = s.args
 	}
 	elog.Info(1, fmt.Sprintf("%s service arguments: %v", windowsServiceName, args))
 
