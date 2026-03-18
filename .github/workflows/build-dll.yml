@@ -1,0 +1,339 @@
+name: Build Cloudflared DLL
+
+on:
+  schedule:
+    - cron: "0 6,18 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.go"
+      - "**/*.py"
+      - ".github/workflows/build-dll.yml"
+
+env:
+  GO_VERSION: "1.22"
+
+permissions:
+  contents: write
+
+jobs:
+  check-skip:
+    runs-on: ubuntu-latest
+    outputs:
+      skip_build: ${{ steps.check.outputs.skip_build }}
+    steps:
+      - name: Check commit message
+        id: check
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"(No Bin Change)"* ]]; then
+            echo "skip_build=true" >> $GITHUB_OUTPUT
+            echo "Skipping build - commit contains (No Bin Change)"
+          else
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+            echo "Build will proceed"
+          fi
+
+  build:
+    needs: check-skip
+    if: needs.check-skip.outputs.skip_build != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows x64 (native)
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .dll
+            name: cloudflared-windows-amd64
+
+          # Windows 386 (cross-compile from Linux)
+          - os: ubuntu-latest
+            goos: windows
+            goarch: 386
+            ext: .dll
+            name: cloudflared-windows-386
+            cross: windows-386
+
+          # Linux x64 (native)
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: .so
+            name: cloudflared-linux-amd64
+
+          # Linux 386 (cross-compile with multilib)
+          - os: ubuntu-latest
+            goos: linux
+            goarch: 386
+            ext: .so
+            name: cloudflared-linux-386
+            cross: linux-386
+
+          # Linux ARM64 (cross-compile)
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            ext: .so
+            name: cloudflared-linux-arm64
+            cross: linux-arm64
+
+          # Linux ARM (cross-compile)
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm
+            ext: .so
+            name: cloudflared-linux-arm
+            cross: linux-arm
+
+          # macOS (native builds)
+          - os: macos-15
+            goos: darwin
+            goarch: amd64
+            ext: .dylib
+            name: cloudflared-darwin-amd64
+
+          - os: macos-15
+            goos: darwin
+            goarch: arm64
+            ext: .dylib
+            name: cloudflared-darwin-arm64
+
+          # Android (NDK cross-compile)
+          - os: ubuntu-latest
+            goos: android
+            goarch: arm64
+            ext: .so
+            name: cloudflared-android-arm64
+            cross: android
+
+          - os: ubuntu-latest
+            goos: android
+            goarch: arm
+            ext: .so
+            name: cloudflared-android-arm
+            cross: android
+
+          - os: ubuntu-latest
+            goos: android
+            goarch: amd64
+            ext: .so
+            name: cloudflared-android-amd64
+            cross: android
+
+          - os: ubuntu-latest
+            goos: android
+            goarch: 386
+            ext: .so
+            name: cloudflared-android-386
+            cross: android
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Clone cloudflared
+        run: git clone --depth 1 https://github.com/cloudflare/cloudflared.git cloudflared-src
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      # Windows 386 cross-compile setup
+      - name: Setup cross-compile for Windows 386
+        if: matrix.cross == 'windows-386'
+        run: |
+          echo "Windows 386 cross-compilation from Linux"
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-i686 g++-mingw-w64-i686
+
+      # Linux cross-compile setup
+      - name: Install Linux ARM64 cross-compiler
+        if: matrix.cross == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Install Linux ARM cross-compiler
+        if: matrix.cross == 'linux-arm'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+
+      - name: Install Linux 386 multilib
+        if: matrix.cross == 'linux-386'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib
+
+      # Android NDK setup
+      - name: Setup Android NDK
+        if: matrix.cross == 'android'
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26b
+          add-to-path: true
+
+      - name: Replace source files
+        run: python updates/replace.py cloudflared-src
+
+      # Native builds (no cross-compilation needed)
+      - name: Build (Native)
+        if: matrix.cross == ''
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+        run: |
+          cd cloudflared-src
+          go build -buildmode=c-shared -o ../${{ matrix.name }}${{ matrix.ext }} ./cmd/cloudflared
+
+      # Windows 386 build (cross-compiled from Linux)
+      - name: Build (Windows 386)
+        if: matrix.cross == 'windows-386'
+        env:
+          GOOS: windows
+          GOARCH: 386
+          CGO_ENABLED: 1
+          CC: i686-w64-mingw32-gcc
+          CXX: i686-w64-mingw32-g++
+        run: |
+          cd cloudflared-src
+          go build -buildmode=c-shared -o ../${{ matrix.name }}${{ matrix.ext }} ./cmd/cloudflared
+
+      # Linux ARM64 cross-compile
+      - name: Build (Linux ARM64)
+        if: matrix.cross == 'linux-arm64'
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: 1
+          CC: aarch64-linux-gnu-gcc
+          CXX: aarch64-linux-gnu-g++
+        run: |
+          cd cloudflared-src
+          go build -buildmode=c-shared -o ../${{ matrix.name }}${{ matrix.ext }} ./cmd/cloudflared
+
+      # Linux ARM cross-compile
+      - name: Build (Linux ARM)
+        if: matrix.cross == 'linux-arm'
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: 7
+          CGO_ENABLED: 1
+          CC: arm-linux-gnueabihf-gcc
+          CXX: arm-linux-gnueabihf-g++
+        run: |
+          cd cloudflared-src
+          go build -buildmode=c-shared -o ../${{ matrix.name }}${{ matrix.ext }} ./cmd/cloudflared
+
+      # Linux 386 cross-compile
+      - name: Build (Linux 386)
+        if: matrix.cross == 'linux-386'
+        env:
+          GOOS: linux
+          GOARCH: 386
+          CGO_ENABLED: 1
+        run: |
+          cd cloudflared-src
+          go build -buildmode=c-shared -o ../${{ matrix.name }}${{ matrix.ext }} ./cmd/cloudflared
+
+      # Android cross-compile
+      - name: Build (Android)
+        if: matrix.cross == 'android'
+        env:
+          GOOS: android
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          cd cloudflared-src
+
+          case "${{ matrix.goarch }}" in
+            arm64) export CC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang" ;;
+            arm)   export CC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang" ;;
+            amd64) export CC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android21-clang" ;;
+            386)   export CC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android21-clang" ;;
+          esac
+
+          go build -buildmode=c-shared -o ../${{ matrix.name }}${{ matrix.ext }} ./cmd/cloudflared
+
+      - name: Generate hashes
+        shell: bash
+        run: |
+          mkdir -p binaries/${{ matrix.goos }}-${{ matrix.goarch }}
+          mv ${{ matrix.name }}${{ matrix.ext }} binaries/${{ matrix.goos }}-${{ matrix.goarch }}/ || true
+          [ -f "${{ matrix.name }}.h" ] && mv ${{ matrix.name }}.h binaries/${{ matrix.goos }}-${{ matrix.goarch }}/ || true
+
+          cd binaries/${{ matrix.goos }}-${{ matrix.goarch }}
+          if command -v sha256sum &> /dev/null; then
+            sha256sum * > SHA256SUMS.txt 2>/dev/null || true
+            md5sum * > MD5SUMS.txt 2>/dev/null || true
+          elif command -v shasum &> /dev/null; then
+            shasum -a 256 * > SHA256SUMS.txt 2>/dev/null || true
+            md5 -r * > MD5SUMS.txt 2>/dev/null || true
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: binaries/${{ matrix.goos }}-${{ matrix.goarch }}/
+
+  commit-binaries:
+    needs: [check-skip, build]
+    if: needs.check-skip.outputs.skip_build != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries/
+
+      - name: Reorganize artifacts
+        run: |
+          mkdir -p final-binaries
+          for dir in binaries/cloudflared-*/; do
+            name=$(basename "$dir")
+            platform=$(echo "$name" | sed 's/cloudflared-//')
+            mkdir -p "final-binaries/$platform"
+            cp -r "$dir"/* "final-binaries/$platform/"
+          done
+
+      - name: Get cloudflared version
+        id: version
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/cloudflare/cloudflared/releases/latest | jq -r '.tag_name')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Generate bin.json
+        run: |
+          rm -rf binaries
+          mv final-binaries binaries
+          python scripts/generate_binaries_json.py
+
+      - name: Commit binaries and metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add binaries/
+          git add bin.json
+          git commit -m "Build: ${{ steps.version.outputs.version }} (${{ steps.version.outputs.date }})" || echo "No changes"
+          git push
