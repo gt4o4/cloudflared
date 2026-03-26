@@ -121,8 +121,8 @@
         {
           "filename": "cloudflared-linux-386.so",
           "url": "https://raw.githubusercontent.com/QudsLab/Cloudflared/main/binaries/linux-386/cloudflared-linux-386.so",
-          "sha256": "5a9f1ddc75a80a22c0dfb9ca5545dce7e5824178943ae328a9fbbffcd254270d",
-          "md5": "3d7333976abeb61e66f76cfd2580c18d",
+          "sha256": "6d66465494379869cc27968e5ad842dbef7e83652fb51365f278ba735ff960e5",
+          "md5": "44a3d3a87d34589bf482d44d63fd3681",
           "size": 37247116
         }
       ]
@@ -157,9 +157,9 @@
         {
           "filename": "cloudflared-linux-arm.so",
           "url": "https://raw.githubusercontent.com/QudsLab/Cloudflared/main/binaries/linux-arm/cloudflared-linux-arm.so",
-          "sha256": "be36cc7df327e29efb719968885b8267f77c79774a9d981011fe5c789836d387",
-          "md5": "9bec98ca80967747d7d8d4dd9b454271",
-          "size": 36195800
+          "sha256": "845a24019c36e8b84922af8d10c53bbaaf964a55d97755a5172908c2e02af7f6",
+          "md5": "c33b18801d1aff42da6e10d823a010fe",
+          "size": 36195804
         }
       ]
     },
@@ -175,8 +175,8 @@
         {
           "filename": "cloudflared-linux-arm64.so",
           "url": "https://raw.githubusercontent.com/QudsLab/Cloudflared/main/binaries/linux-arm64/cloudflared-linux-arm64.so",
-          "sha256": "628ba23e67c96c6ae7f637acf9cb3a35fcf846a7779ba486d6112de1c071862a",
-          "md5": "f5311799de606d486ccf94e21bb9c304",
+          "sha256": "66bdc8d7bfea8857bd8f2606c4dfbd5b58d8fa8bd01a0ca2354dd0c115cee8d2",
+          "md5": "71d296b0443193cc247b559be8472224",
           "size": 39576992
         }
       ]
