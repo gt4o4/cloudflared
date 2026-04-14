@@ -12,6 +12,8 @@
 
 #ifndef GO_CGO_GOSTRING_TYPEDEF
 typedef struct { const char *p; ptrdiff_t n; } _GoString_;
+extern size_t _GoStringLen(_GoString_ s);
+extern const char *_GoStringPtr(_GoString_ s);
 #endif
 
 #endif
@@ -49,9 +51,15 @@ typedef size_t GoUintptr;
 typedef float GoFloat32;
 typedef double GoFloat64;
 #ifdef _MSC_VER
+#if !defined(__cplusplus) || _MSVC_LANG <= 201402L
 #include <complex.h>
 typedef _Fcomplex GoComplex64;
 typedef _Dcomplex GoComplex128;
+#else
+#include <complex>
+typedef std::complex<float> GoComplex64;
+typedef std::complex<double> GoComplex128;
+#endif
 #else
 typedef float _Complex GoComplex64;
 typedef double _Complex GoComplex128;
@@ -79,17 +87,17 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
-extern __declspec(dllexport) void CloudflaredSetSilentMode(int silent);
-extern __declspec(dllexport) int CloudflaredInit();
-extern __declspec(dllexport) int CloudflaredRun(char* cArgs);
-extern __declspec(dllexport) int CloudflaredRunSync(char* cArgs);
-extern __declspec(dllexport) int CloudflaredStop();
-extern __declspec(dllexport) void CloudflaredFreeString(char* s);
-extern __declspec(dllexport) char* CloudflaredVersion();
-extern __declspec(dllexport) char* CloudflaredGetTunnelURL();
-extern __declspec(dllexport) int CloudflaredGetTunnelStatus();
-extern __declspec(dllexport) void CloudflaredSetTunnelURL(char* cURL);
-extern __declspec(dllexport) int CloudflaredStartQuickTunnel(int port);
+extern void CloudflaredSetSilentMode(int silent);
+extern int CloudflaredInit(void);
+extern int CloudflaredRun(char* cArgs);
+extern int CloudflaredRunSync(char* cArgs);
+extern int CloudflaredStop(void);
+extern void CloudflaredFreeString(char* s);
+extern char* CloudflaredVersion(void);
+extern char* CloudflaredGetTunnelURL(void);
+extern int CloudflaredGetTunnelStatus(void);
+extern void CloudflaredSetTunnelURL(char* cURL);
+extern int CloudflaredStartQuickTunnel(int port);
 
 #ifdef __cplusplus
 }
