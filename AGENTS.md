@@ -219,6 +219,70 @@ type TunnelProperties struct {
 - Skip testing for new functionality
 - Remove existing tests unless they're genuinely invalid
 
+## Fork Structure & Merging
+
+### Remotes
+
+| Remote     | URL                                          | Role                              |
+|------------|----------------------------------------------|-----------------------------------|
+| `origin`   | https://github.com/cloudflare/cloudflared    | Official cloudflare source        |
+| `upstream` | https://github.com/QudsLab/Cloudflared       | QudsLab fork (prebuilt binaries)  |
+| `gt4o4`    | https://github.com/gt4o4/cloudflared         | Our working fork                  |
+
+### Branches
+
+| Branch  | Purpose                                                       |
+|---------|---------------------------------------------------------------|
+| `main`  | CGO shared-library exports (`lib_bin_exports.go`) + CI tweaks |
+| `cflib` | Go module API: `package cloudflared` in `cmd/cloudflared/`    |
+
+### Key Modifications (vs official cloudflare/cloudflared)
+
+All `cmd/cloudflared/*.go` files use `package cloudflared` (not `package main`).
+This makes the package importable as a Go module:
+
+```go
+import "github.com/cloudflare/cloudflared/cmd/cloudflared"
+
+cloudflared.Init()
+cloudflared.StartQuickTunnel(8080)
+```
+
+Changes from upstream:
+- `main.go`: `main()` refactored to `initApp()` + `runAppWithArgs()`, API functions added (Init, Stop, Run, StartQuickTunnel, RunNamed, GetURL, IsReady)
+- `tunnel/quick_tunnel.go`: `var OnURLReady func(string)` callback replaces CGO/cflib state
+- `lib_bin_exports.go` (`//go:build cgo`): CGO exports wire `tunnel.OnURLReady` via `wireOnURLReady()`
+- Service files (generic, linux, macos, windows): `runApp()` accepts `args []string` instead of using `os.Args`
+- `updates/modified_files/`: kept in sync with `cmd/cloudflared/` for the replace.py workflow
+
+### Merging Upstream Changes
+
+```bash
+git fetch --all
+git checkout cflib
+
+# Merge official cloudflare first (smaller, less conflict)
+git merge origin/master -m "Merge origin/master (official cloudflare/cloudflared) into cflib"
+
+# Then QudsLab fork
+git merge upstream/main -m "Merge upstream/main (QudsLab/Cloudflared) into cflib"
+
+# Verify
+go vet ./cmd/cloudflared/...
+go build ./cmd/cloudflared/...
+
+git push gt4o4 cflib
+```
+
+When resolving conflicts, keep our side for:
+- `package cloudflared` declarations (not `package main`)
+- `var OnURLReady func(string)` callback in `quick_tunnel.go`
+- `runApp(..., args []string)` signatures in service files
+- `wireOnURLReady()` calls in `lib_bin_exports.go`
+- API functions (Init/Stop/Run/etc.) in `main.go`
+
+After resolving, sync `updates/modified_files/` to match `cmd/cloudflared/`.
+
 ## Dependencies Management
 
 - Use Go modules (`go.mod`) exclusively
