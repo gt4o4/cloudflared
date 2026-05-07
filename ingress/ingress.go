@@ -255,6 +255,9 @@ func validateIngress(ingress []config.UnvalidatedIngressRule, defaults OriginReq
 		} else if prefix := "unix+tls:"; strings.HasPrefix(r.Service, prefix) {
 			path := strings.TrimPrefix(r.Service, prefix)
 			service = &unixSocketPath{path: path, scheme: "https"}
+		} else if prefix := "unix+ssh:"; strings.HasPrefix(r.Service, prefix) {
+			path := strings.TrimPrefix(r.Service, prefix)
+			service = newUnixTCPOverWSService(path, "ssh")
 		} else if prefix := "http_status:"; strings.HasPrefix(r.Service, prefix) {
 			statusCode, err := strconv.Atoi(strings.TrimPrefix(r.Service, prefix))
 			if err != nil {
