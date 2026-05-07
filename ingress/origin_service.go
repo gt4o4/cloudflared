@@ -145,6 +145,13 @@ func newTCPOverWSService(url *url.URL) *tcpOverWSService {
 	}
 }
 
+func newUnixTCPOverWSService(path string, scheme string) *tcpOverWSService {
+	return &tcpOverWSService{
+		scheme: scheme,
+		dest:   path,
+	}
+}
+
 func newBastionService() *tcpOverWSService {
 	return &tcpOverWSService{
 		isBastion: true,
