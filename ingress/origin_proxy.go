@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/rs/zerolog"
 )
@@ -105,7 +106,11 @@ func (o *tcpOverWSService) EstablishConnection(ctx context.Context, dest string,
 		dest = o.dest
 	}
 
-	conn, err := o.dialer.DialContext(ctx, "tcp", dest)
+	network := "tcp"
+	if strings.HasPrefix(dest, "/") {
+		network = "unix"
+	}
+	conn, err := o.dialer.DialContext(ctx, network, dest)
 	if err != nil {
 		return nil, err
 	}
