@@ -28,9 +28,9 @@ type QUICConnection interface {
 var _ QUICConnection = (*ConnWithCloser)(nil)
 
 var (
-	// error returned when the [NewConnWithCloser] is called with a nil conn argument
+	// error returned when the [NewQUICConnection] is called with a nil conn argument
 	ErrNilQuicConnection = errors.New("the provided quic connection is nil")
-	// error returned when the [NewConnWithCloser] is called with a nil closer argument
+	// error returned when the [NewQUICConnection] is called with a nil closer argument
 	ErrNilCloser = errors.New("the provided closer is nil")
 )
 
@@ -38,8 +38,8 @@ var (
 // underlying [*net.UDPConn]). When [CloseWithError] is called the QUIC
 // connection is closed first, then the closer is closed deterministically.
 //
-// A nil conn is only safe for [CloseWithError] (used in tests). All other
-// delegated methods will panic on a nil conn.
+// [NewQUICConnection] rejects a nil conn or closer, so all delegated methods
+// (including [ConnWithCloser.CloseWithError]) may assume both are non-nil.
 type ConnWithCloser struct {
 	conn   quic.Connection
 	closer io.Closer
