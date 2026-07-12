@@ -16,7 +16,6 @@ import (
 
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/cliutil"
 	cfdflags "github.com/cloudflare/cloudflared/cmd/cloudflared/flags"
-	"github.com/cloudflare/cloudflared/cmd/cloudflared/inits"
 	"github.com/cloudflare/cloudflared/config"
 	"github.com/cloudflare/cloudflared/logger"
 )
@@ -113,10 +112,10 @@ func CheckForUpdate(options updateOptions) (CheckResult, error) {
 func encodeWindowsPath(path string) string {
 	// We do this because Windows allows spaces in directories such as
 	// Program Files but does not allow these directories to be spaced in batch files.
-	targetPath := strings.ReplaceAll(path, "Program Files (x86)", "PROGRA~2")
+	targetPath := strings.Replace(path, "Program Files (x86)", "PROGRA~2", -1)
 	// This is to do the same in 32 bit systems. We do this second so that the first
 	// replace is for x86 dirs.
-	targetPath = strings.ReplaceAll(targetPath, "Program Files", "PROGRA~1")
+	targetPath = strings.Replace(targetPath, "Program Files", "PROGRA~1", -1)
 	return targetPath
 }
 
@@ -249,7 +248,7 @@ func (a *AutoUpdater) Run(ctx context.Context) error {
 		updateOutcome := loggedUpdate(a.log, updateOptions{updateDisabled: !a.configurable.enabled})
 		if updateOutcome.Updated {
 			buildInfo.CloudflaredVersion = updateOutcome.Version
-			if inits.IsSysV() {
+			if IsSysV() {
 				// SysV doesn't have a mechanism to keep service alive, we have to restart the process
 				a.log.Info().Msg("Restarting service managed by SysV...")
 				pid, err := a.listeners.StartProcess()
@@ -299,5 +298,16 @@ func wasInstalledFromPackageManager() bool {
 }
 
 func isRunningFromTerminal() bool {
-	return term.IsTerminal(int(os.Stdout.Fd())) // nolint:gosec
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+func IsSysV() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+
+	if _, err := os.Stat("/run/systemd/system"); err == nil {
+		return false
+	}
+	return true
 }

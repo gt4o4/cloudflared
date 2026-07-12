@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	"github.com/quic-go/quic-go"
 	"github.com/rs/zerolog"
 
 	"github.com/cloudflare/cloudflared/packet"
@@ -50,14 +51,14 @@ func (dm *DatagramMuxerV2) mtu() int {
 }
 
 type DatagramMuxerV2 struct {
-	session          QUICConnection
+	session          quic.Connection
 	logger           *zerolog.Logger
 	sessionDemuxChan chan<- *packet.Session
 	packetDemuxChan  chan Packet
 }
 
 func NewDatagramMuxerV2(
-	quicSession QUICConnection,
+	quicSession quic.Connection,
 	log *zerolog.Logger,
 	sessionDemuxChan chan<- *packet.Session,
 ) *DatagramMuxerV2 {
@@ -109,8 +110,7 @@ func (dm *DatagramMuxerV2) SendPacket(pk Packet) error {
 	return nil
 }
 
-// ServeReceive reads datagrams from the QUIC connection and demuxes them
-// depending on whether it's a session or packet
+// Demux reads datagrams from the QUIC connection and demuxes depending on whether it's a session or packet
 func (dm *DatagramMuxerV2) ServeReceive(ctx context.Context) error {
 	for {
 		msg, err := dm.session.ReceiveDatagram(ctx)
@@ -144,10 +144,8 @@ func (dm *DatagramMuxerV2) demux(ctx context.Context, msgWithType []byte) error 
 	switch msgType {
 	case DatagramTypeUDP:
 		return dm.handleSession(ctx, msg)
-	case DatagramTypeIP, DatagramTypeIPWithTrace, DatagramTypeTracingSpan:
-		return dm.handlePacket(ctx, msg, msgType)
 	default:
-		return fmt.Errorf("unexpected datagram type %d", msgType)
+		return dm.handlePacket(ctx, msg, msgType)
 	}
 }
 
@@ -191,10 +189,8 @@ func (dm *DatagramMuxerV2) handlePacket(ctx context.Context, pk []byte, msgType 
 			Spans:           spans,
 			TracingIdentity: tracingIdentity,
 		}
-	case DatagramTypeUDP:
-		return fmt.Errorf("unexpected datagram type %d in handlePacket", msgType)
 	default:
-		return fmt.Errorf("unexpected datagram type %d", msgType)
+		return fmt.Errorf("Unexpected datagram type %d", msgType)
 	}
 	select {
 	case <-ctx.Done():

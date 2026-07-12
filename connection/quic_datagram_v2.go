@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	pkgerrors "github.com/pkg/errors"
+	"github.com/quic-go/quic-go"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,6 +24,7 @@ import (
 	"github.com/cloudflare/cloudflared/packet"
 	cfdquic "github.com/cloudflare/cloudflared/quic"
 	"github.com/cloudflare/cloudflared/tracing"
+	"github.com/cloudflare/cloudflared/tunnelrpc/pogs"
 	tunnelpogs "github.com/cloudflare/cloudflared/tunnelrpc/pogs"
 	rpcquic "github.com/cloudflare/cloudflared/tunnelrpc/quic"
 )
@@ -31,18 +34,20 @@ const (
 	demuxChanCapacity = 16
 )
 
-var errInvalidDestinationIP = pkgerrors.New("unable to parse destination IP")
+var (
+	errInvalidDestinationIP = errors.New("unable to parse destination IP")
+)
 
 // DatagramSessionHandler is a service that can serve datagrams for a connection and handle sessions from incoming
 // connection streams.
 type DatagramSessionHandler interface {
 	Serve(context.Context) error
 
-	tunnelpogs.SessionManager
+	pogs.SessionManager
 }
 
 type datagramV2Connection struct {
-	conn  cfdquic.QUICConnection
+	conn  quic.Connection
 	index uint8
 
 	// sessionManager tracks active sessions. It receives datagrams from quic connection via datagramMuxer
@@ -64,7 +69,7 @@ type datagramV2Connection struct {
 }
 
 func NewDatagramV2Connection(ctx context.Context,
-	conn cfdquic.QUICConnection,
+	conn quic.Connection,
 	originDialer ingress.OriginUDPDialer,
 	icmpRouter ingress.ICMPRouter,
 	index uint8,
@@ -161,7 +166,7 @@ func (q *datagramV2Connection) RegisterUdpSession(ctx context.Context, sessionID
 
 	session, err := q.sessionManager.RegisterSession(ctx, sessionID, originProxy)
 	if err != nil {
-		_ = originProxy.Close()
+		originProxy.Close()
 		log.Err(err).Str(datagramsession.LogFieldSessionID, datagramsession.FormatSessionID(sessionID)).Msgf("Failed to register udp session")
 		tracing.EndWithErrorStatus(registerSpan, err)
 		q.flowLimiter.Release()
@@ -224,7 +229,7 @@ func (q *datagramV2Connection) closeUDPSession(ctx context.Context, sessionID uu
 	}
 
 	stream := cfdquic.NewSafeStreamCloser(quicStream, q.streamWriteTimeout, q.logger)
-	defer func() { _ = stream.Close() }()
+	defer stream.Close()
 	rpcClientStream, err := rpcquic.NewSessionClient(ctx, stream, q.rpcTimeout)
 	if err != nil {
 		// Log this at debug because this is not an error if session was closed due to lost connection

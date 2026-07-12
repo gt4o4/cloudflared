@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gobwas/ws/wsutil"
+	gorillaWS "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/proxy"
@@ -60,7 +61,7 @@ func TestStreamTCPConnection(t *testing.T) {
 	})
 	errGroup.Go(func() error {
 		echoTCPOrigin(t, originConn)
-		_ = originConn.Close()
+		originConn.Close()
 		return nil
 	})
 
@@ -87,7 +88,7 @@ func TestDefaultStreamWSOverTCPConnection(t *testing.T) {
 	})
 	errGroup.Go(func() error {
 		echoTCPOrigin(t, originConn)
-		_ = originConn.Close()
+		originConn.Close()
 		return nil
 	})
 
@@ -116,14 +117,14 @@ func TestSocksStreamWSOverTCPConnection(t *testing.T) {
 	for _, status := range statusCodes {
 		handler := func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(r.Body)
-			assert.NoError(t, err)
-			assert.Equal(t, []byte(sendMessage), body)
+			require.NoError(t, err)
+			require.Equal(t, []byte(sendMessage), body)
 
-			assert.Equal(t, echoHeaderIncomingValue, r.Header.Get(echoHeaderName))
+			require.Equal(t, echoHeaderIncomingValue, r.Header.Get(echoHeaderName))
 			w.Header().Set(echoHeaderName, echoHeaderReturnValue)
 
 			w.WriteHeader(status)
-			_, _ = w.Write([]byte(echoMessage))
+			w.Write([]byte(echoMessage))
 		}
 		origin := httptest.NewServer(http.HandlerFunc(handler))
 		defer origin.Close()
@@ -155,7 +156,7 @@ func TestSocksStreamWSOverTCPConnection(t *testing.T) {
 		errGroup.Go(func() error {
 			wsForwarderInConn, err := wsForwarderListener.Accept()
 			require.NoError(t, err)
-			defer func() { _ = wsForwarderInConn.Close() }()
+			defer wsForwarderInConn.Close()
 
 			stream.Pipe(wsForwarderInConn, &wsEyeball{wsForwarderOutConn}, TestLogger)
 			return nil
@@ -170,22 +171,20 @@ func TestSocksStreamWSOverTCPConnection(t *testing.T) {
 
 		// Request URL doesn't matter because the transport is using eyeballDialer to connectq
 		req, err := http.NewRequestWithContext(ctx, "GET", "http://test-socks-stream.com", bytes.NewBuffer([]byte(sendMessage)))
-		require.NoError(t, err)
-		defer func() { _ = req.Body.Close() }()
+		assert.NoError(t, err)
 		req.Header.Set(echoHeaderName, echoHeaderIncomingValue)
 
 		resp, err := transport.RoundTrip(req)
-		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		assert.NoError(t, err)
 		assert.Equal(t, status, resp.StatusCode)
 		require.Equal(t, echoHeaderReturnValue, resp.Header.Get(echoHeaderName))
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Equal(t, []byte(echoMessage), body)
 
-		_ = wsForwarderOutConn.Close()
-		_ = edgeConn.Close()
-		_ = tcpOverWSConn.Close()
+		wsForwarderOutConn.Close()
+		edgeConn.Close()
+		tcpOverWSConn.Close()
 
 		require.NoError(t, errGroup.Wait())
 	}
@@ -206,7 +205,7 @@ func TestWsConnReturnsBeforeStreamReturns(t *testing.T) {
 		go func() {
 			time.Sleep(time.Millisecond * 10)
 			// Simulate losing connection to origin
-			_ = originConn.Close()
+			originConn.Close()
 		}()
 		ctx := context.WithValue(r.Context(), websocket.PingPeriodContextKey, time.Microsecond)
 		tcpOverWSConn.Stream(ctx, eyeballConn, TestLogger)
@@ -222,13 +221,11 @@ func TestWsConnReturnsBeforeStreamReturns(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		eyeballConn, edgeConn := net.Pipe()
 		req, err := http.NewRequestWithContext(ctx, http.MethodConnect, server.URL, edgeConn)
-		require.NoError(t, err)
-		defer func() { _ = req.Body.Close() }()
+		assert.NoError(t, err)
 
 		resp, err := client.Transport.RoundTrip(req)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-		defer func() { _ = resp.Body.Close() }()
+		assert.NoError(t, err)
+		assert.Equal(t, resp.StatusCode, http.StatusOK)
 
 		errGroup.Go(func() error {
 			for {
@@ -264,18 +261,60 @@ func echoWSEyeball(t *testing.T, conn net.Conn) {
 		assert.NoError(t, conn.Close())
 	}()
 
-	require.NoError(t, wsutil.WriteClientBinary(conn, testMessage))
+	if !assert.NoError(t, wsutil.WriteClientBinary(conn, testMessage)) {
+		return
+	}
 
 	readMsg, err := wsutil.ReadServerBinary(conn)
-	require.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	assert.Equal(t, testResponse, readMsg)
+}
+
+func echoWSOrigin(t *testing.T, expectMessages bool) *httptest.Server {
+	var upgrader = gorillaWS.Upgrader{
+		ReadBufferSize:  10,
+		WriteBufferSize: 10,
+	}
+
+	ws := func(w http.ResponseWriter, r *http.Request) {
+		header := make(http.Header)
+		for k, vs := range r.Header {
+			if k == "Test-Cloudflared-Echo" {
+				header[k] = vs
+			}
+		}
+		conn, err := upgrader.Upgrade(w, r, header)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		sawMessage := false
+		for {
+			messageType, p, err := conn.ReadMessage()
+			if err != nil {
+				if expectMessages && !sawMessage {
+					t.Errorf("unexpected error: %v", err)
+				}
+				return
+			}
+			assert.Equal(t, testMessage, p)
+			sawMessage = true
+			if err := conn.WriteMessage(messageType, testResponse); err != nil {
+				return
+			}
+		}
+	}
+
+	// NewTLSServer starts the server in another thread
+	return httptest.NewTLSServer(http.HandlerFunc(ws))
 }
 
 func echoTCPOrigin(t *testing.T, conn net.Conn) {
 	readBuffer := make([]byte, len(testMessage))
 	_, err := conn.Read(readBuffer)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, testMessage, readBuffer)
 

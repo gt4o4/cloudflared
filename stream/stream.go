@@ -67,6 +67,7 @@ func (s *bidirectionalStreamStatus) wait(maxWaitForSecondStream time.Duration) e
 
 	// Only wait for second stream to finish if maxWait is greater than zero
 	if maxWaitForSecondStream > 0 {
+
 		timer := time.NewTimer(maxWaitForSecondStream)
 		defer timer.Stop()
 
@@ -86,14 +87,14 @@ func (s *bidirectionalStreamStatus) isAnyDone() bool {
 
 // Pipe copies copy data to & from provided io.ReadWriters.
 func Pipe(tunnelConn, originConn io.ReadWriter, log *zerolog.Logger) {
-	_ = PipeBidirectional(NopCloseWriterAdapter(tunnelConn), NopCloseWriterAdapter(originConn), 0, log)
+	PipeBidirectional(NopCloseWriterAdapter(tunnelConn), NopCloseWriterAdapter(originConn), 0, log)
 }
 
-// PipeBidirectional copies data to two unidirectional streams. It is a special case of Pipe where it receives a concept that allows for Read and Write side to be closed independently.
+// PipeBidirectional copies data two BidirectionStreams. It is a special case of Pipe where it receives a concept that allows for Read and Write side to be closed independently.
 // The main difference is that when piping data from a reader to a writer, if EOF is read, then this implementation propagates the EOF signal to the destination/writer by closing the write side of the
 // Bidirectional Stream.
 // Finally, depending on once EOF is ready from one of the provided streams, the other direction of streaming data will have a configured time period to also finish, otherwise,
-// the method will return immediately  with a timeout error. It is however, the responsibility of the caller to close the associated streams in both ends in order to free all the resources/go-routines.
+// the method will return immediately  with a timeout error. It is however, the responsability of the caller to close the associated streams in both ends in order to free all the resources/go-routines.
 func PipeBidirectional(downstream, upstream Stream, maxWaitForSecondStream time.Duration, log *zerolog.Logger) error {
 	status := newBiStreamStatus()
 
@@ -128,7 +129,7 @@ func unidirectionalStream(dst WriterCloser, src Reader, dir string, status *bidi
 		}
 	}()
 
-	defer func() { _ = dst.CloseWrite() }()
+	defer dst.CloseWrite()
 
 	_, err := copyData(dst, src, dir)
 	if err != nil {
