@@ -13,12 +13,18 @@ import (
 
 // IsSystemd reports whether the host is managed by systemd.
 func IsSystemd() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
 	_, err := os.Stat("/run/systemd/system")
 	return err == nil
 }
 
 // IsOpenRC reports whether the host is managed by OpenRC.
 func IsOpenRC() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
 	for _, path := range []string{"/sbin/openrc-run", "/usr/sbin/openrc-run", "/usr/bin/openrc-run"} {
 		if _, err := os.Stat(path); err == nil {
 			return true
