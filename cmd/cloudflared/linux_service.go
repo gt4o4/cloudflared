@@ -240,7 +240,7 @@ var openrcConfTemplate = ServiceTemplate{
 	FileMode: 0o644,
 	Content: `# Configuration for the cloudflared OpenRC service.
 
-# User the cloudflared daemon runs as. Defaults to root.
+# The user the cloudflared daemon runs as. Defaults to root.
 #cloudflared_user="cloudflared"
 `,
 }
