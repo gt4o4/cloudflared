@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
+	"github.com/cloudflare/cloudflared/cmd/cloudflared/cliutil"
 	"github.com/cloudflare/cloudflared/cmd/cloudflared/flags"
 	"github.com/cloudflare/cloudflared/connection"
 )
@@ -48,7 +49,7 @@ func RunQuickTunnel(sc *subcommandContext) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to request quick Tunnel")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// This will read the entire response into memory so we can print it in case of error
 	rsp_body, err := io.ReadAll(resp.Body)
@@ -84,12 +85,10 @@ func RunQuickTunnel(sc *subcommandContext) error {
 		OnURLReady(url)
 	}
 
-	for _, line := range AsciiBox([]string{
+	cliutil.LogTable(sc.log, []string{
 		"Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):",
 		url,
-	}, 2) {
-		sc.log.Info().Msg(line)
-	}
+	})
 
 	if !sc.c.IsSet(flags.Protocol) {
 		_ = sc.c.Set(flags.Protocol, "quic")
@@ -123,27 +122,4 @@ type QuickTunnel struct {
 	Hostname   string `json:"hostname"`
 	AccountTag string `json:"account_tag"`
 	Secret     []byte `json:"secret"`
-}
-
-// Print out the given lines in a nice ASCII box.
-func AsciiBox(lines []string, padding int) (box []string) {
-	maxLen := maxLen(lines)
-	spacer := strings.Repeat(" ", padding)
-	border := "+" + strings.Repeat("-", maxLen+(padding*2)) + "+"
-	box = append(box, border)
-	for _, line := range lines {
-		box = append(box, "|"+spacer+line+strings.Repeat(" ", maxLen-len(line))+spacer+"|")
-	}
-	box = append(box, border)
-	return
-}
-
-func maxLen(lines []string) int {
-	max := 0
-	for _, line := range lines {
-		if len(line) > max {
-			max = len(line)
-		}
-	}
-	return max
 }
