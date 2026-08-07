@@ -92,7 +92,7 @@ func initApp(graceShutdownC chan struct{}) *cli.App {
 	app.Action = action(graceShutdownC)
 	app.Commands = commands(cli.ShowVersion)
 
-	tunnel.Init(bInfo, graceShutdownC) // we need this to support the tunnel sub command...
+	tunnel.Init(bInfo, graceShutdownC)
 	access.Init(graceShutdownC, Version)
 	updater.Init(bInfo)
 	tracing.Init(Version)
