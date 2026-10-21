@@ -76,7 +76,13 @@ for f in main.go lib_bin_exports.go generic_service.go linux_service.go \
   cp "cmd/cloudflared/$f" "updates/modified_files/$f"
 done
 cp cmd/cloudflared/tunnel/quick_tunnel.go updates/modified_files/quick_tunnel.go
-python3 updates/replace.py . --verify
+for f in main.go lib_bin_exports.go generic_service.go linux_service.go \
+         macos_service.go windows_service.go; do
+  cmp "cmd/cloudflared/$f" "updates/modified_files/$f" || echo "DRIFT: $f"
+done
+cmp cmd/cloudflared/tunnel/quick_tunnel.go updates/modified_files/quick_tunnel.go || echo "DRIFT: quick_tunnel.go"
+#   (`replace.py --verify` only checks that the mapping's files exist; cmp
+#   compares content, and must print nothing)
 git add -A && git commit -m "Re-sync updates/modified_files with cmd/cloudflared after rebase onto main"
 
 # 5. Verify (the branch's checks; not `go build ./...`: updates/modified_files holds two packages)
