@@ -13,44 +13,86 @@ Both share the same codebase in `cmd/cloudflared/`.
 
 ## Branch & Remote Structure
 
-| Remote     | URL                                          | Role                              |
-|------------|----------------------------------------------|-----------------------------------|
-| `origin`   | https://github.com/cloudflare/cloudflared    | Official cloudflare source        |
-| `upstream` | https://github.com/QudsLab/Cloudflared       | QudsLab fork (prebuilt binaries)  |
-| `gt4o4`    | https://github.com/gt4o4/cloudflared         | Our working fork                  |
+| Remote     | URL                                         | Role                                                |
+|------------|---------------------------------------------|-----------------------------------------------------|
+| `origin`   | git@github.com:gt4o4/cloudflared.git        | This fork (push here)                               |
+| `upstream` | https://github.com/cloudflare/cloudflared   | Official source; its release tags are the sync points |
 
-| Branch     | Purpose                                                        |
-|------------|----------------------------------------------------------------|
-| `main`     | Base: CGO shared-library exports + CI workflow changes         |
-| `cflib`    | Go module API (`package cloudflared`) on top of `main`         |
+The fork's GitHub parent is QudsLab/Cloudflared, which is why GitHub's compare
+view and `gh api compare` fail against cloudflare/cloudflared; nothing is taken
+from that parent.
 
-## Merging Procedure
+| Branch  | Purpose                                                                                     |
+|---------|---------------------------------------------------------------------------------------------|
+| `main`  | Upstream's newest release tag + two commits: the `unix+ssh:` ingress scheme and the inits/service tweaks. Pinned by the nix-configs fleet (`common/overlays/cloudflared.nix`); rebased onto each release |
+| `cflib` | The embedding API on top of `main` (the default branch): `package cloudflared` in `cmd/cloudflared/`, the CGO exports (`lib_bin_exports.go`), the Python wrapper, `updates/` and the DLL workflow. Rebased onto `main` after each release; nothing in the fleet consumes it |
 
-When either upstream has new commits, merge them into `cflib`:
+Old heads stay reachable as `pin-<date>` (`main`) and `pin-<date>-cflib` tags.
+
+## Syncing Procedure
+
+Upstream is taken by rebase, never by merge: `main` onto the release tag, then
+`cflib` onto `main`. Each step force-pushes with `--force-with-lease` after
+tagging the old head.
 
 ```bash
-# 1. Fetch all remotes
-git fetch --all
+git clone git@github.com:gt4o4/cloudflared.git && cd cloudflared
+git remote add upstream https://github.com/cloudflare/cloudflared.git
+git fetch upstream --tags
+git checkout main              # the clone starts on cflib, the default branch
 
-# 2. Merge official cloudflare first (smaller, less likely to conflict)
-git checkout cflib
-git merge origin/master -m "Merge origin/master (official cloudflare/cloudflared) into cflib"
+# 1. main onto the newest release tag (two commits replay)
+OLD_MAIN=$(git rev-parse main)
+git tag -m "pin before <date> rebase onto <tag>" pin-<date> "$OLD_MAIN"
+git rebase <tag>                                # e.g. 2026.10.3
+grep -n 'unix+ssh' ingress/ingress.go           # the patch survived
+gofmt -e -l $(git diff --name-only <tag> | grep '\.go$') && go build ./...
+git push origin pin-<date>
+git push --force-with-lease=main:"$OLD_MAIN" origin main
 
-# 3. Merge QudsLab fork (prebuilt binaries, may be larger)
-git merge upstream/main -m "Merge upstream/main (QudsLab/Cloudflared) into cflib"
+# 2. cflib onto the new main: replay ONLY cflib's own commits
+OLD_CFLIB=$(git rev-parse cflib)
+git tag -m "pin before <date> rebase of cflib onto main" pin-<date>-cflib "$OLD_CFLIB"
+git rebase --onto main "$OLD_MAIN" cflib -X theirs
+#   --onto ... $OLD_MAIN skips the old copies of main's two commits (a plain
+#   `git rebase main` replays them too and conflicts on them); -X theirs keeps
+#   cflib's hunk wherever both sides touched a file.
 
-# 4. Verify
+# 3. Review the files both sides touched: -X theirs is wrong for code
+comm -12 <(git diff --name-only "$OLD_MAIN" main | sort) \
+         <(git diff --name-only "$OLD_MAIN" "$OLD_CFLIB" | sort)
+#   README.md, AGENTS.md, .github/workflows/check.yaml: cflib's own rewrites,
+#     keep ours (the README then lacks upstream's newest sections; port by hand
+#     what matters).
+#   cmd/cloudflared/tunnel/quick_tunnel.go: keep UPSTREAM's startup code and
+#     fire OnURLReady(quickTunnelURL) just before cliutil.LogTable(...).
+#   .gitignore: upstream's lines (/vendor) plus ours.
+#   Any cmd/cloudflared/*.go: keep `package cloudflared`,
+#     `runApp(..., args []string)`, `wireOnURLReady()` and main.go's API functions.
+
+# 4. Re-sync the mirror that replace.py applies (pairs: updates/json/file_mapping.json)
+for f in main.go lib_bin_exports.go generic_service.go linux_service.go \
+         macos_service.go windows_service.go; do
+  cp "cmd/cloudflared/$f" "updates/modified_files/$f"
+done
+cp cmd/cloudflared/tunnel/quick_tunnel.go updates/modified_files/quick_tunnel.go
+python3 updates/replace.py . --verify
+git add -A && git commit -m "Re-sync updates/modified_files with cmd/cloudflared after rebase onto main"
+
+# 5. Verify (the branch's checks; not `go build ./...`: updates/modified_files holds two packages)
+gofmt -e -l $(git diff --name-only main | grep '\.go$')
 go vet ./cmd/cloudflared/...
 go build ./cmd/cloudflared/...
+git diff --stat main                            # cflib's own delta, ~45 files
 
-# 5. Push
-git push gt4o4 cflib
+# 6. Push
+git push origin pin-<date>-cflib
+git push --force-with-lease=cflib:"$OLD_CFLIB" origin cflib
 ```
 
-If conflicts arise in `cmd/cloudflared/` files, always keep our `package cloudflared`
-declarations, `OnURLReady` callback, and `runApp(..., args []string)` signatures.
-The `updates/modified_files/` should be kept in sync with `cmd/cloudflared/` after
-resolving conflicts.
+Last done 2026-10-21: `main` onto 2026.10.3 (`fd503fea`), `cflib` `adfe4006` →
+`2c7d180a` (its first sync since the August `main`; quick_tunnel.go and
+.gitignore needed the hand fixes above).
 
 ---
 
