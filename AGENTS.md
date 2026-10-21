@@ -290,18 +290,19 @@ notice, do not proceed without explicit confirmation.
 
 ### Remotes
 
-| Remote     | URL                                          | Role                              |
-|------------|----------------------------------------------|-----------------------------------|
-| `origin`   | https://github.com/cloudflare/cloudflared    | Official cloudflare source        |
-| `upstream` | https://github.com/QudsLab/Cloudflared       | QudsLab fork (prebuilt binaries)  |
-| `gt4o4`    | https://github.com/gt4o4/cloudflared         | Our working fork                  |
+| Remote     | URL                                         | Role                                                  |
+|------------|---------------------------------------------|-------------------------------------------------------|
+| `origin`   | git@github.com:gt4o4/cloudflared.git        | This fork (push here)                                 |
+| `upstream` | https://github.com/cloudflare/cloudflared   | Official source; its release tags are the sync points |
+
+(The GitHub parent is QudsLab/Cloudflared; nothing is taken from it.)
 
 ### Branches
 
-| Branch  | Purpose                                                       |
-|---------|---------------------------------------------------------------|
-| `main`  | CGO shared-library exports (`lib_bin_exports.go`) + CI tweaks |
-| `cflib` | Go module API: `package cloudflared` in `cmd/cloudflared/`    |
+| Branch  | Purpose                                                                                  |
+|---------|------------------------------------------------------------------------------------------|
+| `main`  | Upstream's newest release tag + two commits (`unix+ssh:` ingress, inits/service tweaks); pinned by the nix-configs fleet; rebased onto each release |
+| `cflib` | The embedding API on top of `main` (default branch): `package cloudflared` in `cmd/cloudflared/`, `lib_bin_exports.go`, the Python wrapper, `updates/`, the DLL workflow; rebased onto `main` after each release |
 
 ### Key Modifications (vs official cloudflare/cloudflared)
 
@@ -322,33 +323,27 @@ Changes from upstream:
 - Service files (generic, linux, macos, windows): `runApp()` accepts `args []string` instead of using `os.Args`
 - `updates/modified_files/`: kept in sync with `cmd/cloudflared/` for the replace.py workflow
 
-### Merging Upstream Changes
+### Syncing with Upstream
 
-```bash
-git fetch --all
-git checkout cflib
+Rebase, never merge: `main` onto upstream's newest release tag, then `cflib`
+onto `main` with `git rebase --onto main <old main head> cflib -X theirs`, so
+only cflib's own commits replay. Tag each old head first (`pin-<date>`,
+`pin-<date>-cflib`) and push with `--force-with-lease`. The full script, with
+the review of the files both sides touch, is in `updates/API_GUIDE.md`
+("Syncing Procedure").
 
-# Merge official cloudflare first (smaller, less conflict)
-git merge origin/master -m "Merge origin/master (official cloudflare/cloudflared) into cflib"
-
-# Then QudsLab fork
-git merge upstream/main -m "Merge upstream/main (QudsLab/Cloudflared) into cflib"
-
-# Verify
-go vet ./cmd/cloudflared/...
-go build ./cmd/cloudflared/...
-
-git push gt4o4 cflib
-```
-
-When resolving conflicts, keep our side for:
+When resolving, keep our side for:
 - `package cloudflared` declarations (not `package main`)
-- `var OnURLReady func(string)` callback in `quick_tunnel.go`
+- `var OnURLReady func(string)` in `quick_tunnel.go`, fired on the normalized
+  URL just before `cliutil.LogTable(...)` (keep upstream's startup code itself)
 - `runApp(..., args []string)` signatures in service files
 - `wireOnURLReady()` calls in `lib_bin_exports.go`
 - API functions (Init/Stop/Run/etc.) in `main.go`
 
-After resolving, sync `updates/modified_files/` to match `cmd/cloudflared/`.
+Keep upstream's side for everything else in code (`.gitignore`'s `/vendor`
+included). After resolving, re-sync `updates/modified_files/` to match
+`cmd/cloudflared/` (`updates/json/file_mapping.json` lists the pairs) and run
+`go vet ./cmd/cloudflared/...` and `go build ./cmd/cloudflared/...`.
 
 ## Dependencies Management
 
