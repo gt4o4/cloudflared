@@ -215,14 +215,11 @@ func RunQuickTunnel(sc *subcommandContext) error {
 		}
 	}
 
+	quickTunnelURL := normalizeQuickTunnelURL(data.Result.Hostname)
 	if OnURLReady != nil {
-		OnURLReady(url)
+		OnURLReady(quickTunnelURL)
 	}
-
-	cliutil.LogTable(sc.log, []string{
-		"Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):",
-		url,
-	})
+	cliutil.LogTable(sc.log, quickTunnelStartupLines(isProtected, quickTunnelURL, localOrigin, recipientPolicy))
 
 	if !sc.c.IsSet(flags.Protocol) {
 		_ = sc.c.Set(flags.Protocol, "quic")
