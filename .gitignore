@@ -19,6 +19,7 @@ ssh_server_tests/.env
 built_artifacts/
 component-tests/.venv
 /artifacts
+/vendor
 /.cloudflare
 *.pyc
 /.backup
